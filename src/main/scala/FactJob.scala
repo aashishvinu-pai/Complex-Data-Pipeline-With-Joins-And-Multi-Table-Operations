@@ -10,6 +10,7 @@ object FactJob {
   val RAW_TABLE  = "default.nyc_taxi_trips_raw"
   val FACT_TABLE = "default.nyc_taxi_fact"
 
+
   def main(args: Array[String]): Unit = {
 
     val spark = SparkSession.builder()
@@ -18,7 +19,7 @@ object FactJob {
       .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
       .config("spark.sql.catalog.iceberg_catalog", "org.apache.iceberg.spark.SparkCatalog")
       .config("spark.sql.catalog.iceberg_catalog.type", "hadoop")
-      .config("spark.sql.catalog.iceberg_catalog.warehouse", "/home/aashishvinu/tasks/spark_iceberg/spark-warehouse")
+      .config("spark.sql.catalog.iceberg_catalog.warehouse", "/home/aashishvinu/tasks/multitable_iceberg/spark-warehouse")
       .config("spark.sql.defaultCatalog", "iceberg_catalog")
       .getOrCreate()
 

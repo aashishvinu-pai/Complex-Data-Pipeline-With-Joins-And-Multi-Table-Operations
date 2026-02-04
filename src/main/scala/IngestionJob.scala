@@ -15,16 +15,17 @@ object IngestionJob {
       .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
       .config("spark.sql.catalog.iceberg_catalog", "org.apache.iceberg.spark.SparkCatalog")
       .config("spark.sql.catalog.iceberg_catalog.type", "hadoop")
-      .config("spark.sql.catalog.iceberg_catalog.warehouse", "/home/aashishvinu/tasks/spark_iceberg/spark-warehouse")
+      .config("spark.sql.catalog.iceberg_catalog.warehouse", "/home/aashishvinu/tasks/multitable_iceberg/spark-warehouse")
       .config("spark.sql.defaultCatalog", "iceberg_catalog")
       .getOrCreate()
 
     import spark.implicits._
 
+    val targetTable = "default.nyc_taxi_trips_raw"
     val writer = new SDSIcebergWriter(spark)
 
     try {
-      val inputDir = "/home/aashishvinu/tasks/spark_iceberg/data/input"
+      val inputDir = "/home/aashishvinu/tasks/multitable_iceberg/data/input"
 
       logger.info(s"Starting ingestion - reading Parquet files from: $inputDir")
 
@@ -40,7 +41,6 @@ object IngestionJob {
         return
       }
 
-      // Standard NYC Yellow taxi column renaming & cleanup
       val cleanedDF = rawDF
         .toDF(rawDF.columns.map(_.toLowerCase): _*)
         .withColumnRenamed("tpep_pickup_datetime", "pickup_datetime")
@@ -50,7 +50,6 @@ object IngestionJob {
         .withColumn("pickup_date", to_date($"pickup_datetime"))
         .withColumn("pickup_hour", hour($"pickup_datetime"))
 
-      // Basic quality filters
       val filteredDF = cleanedDF.na.drop(Seq("pickup_datetime", "dropoff_datetime", "trip_distance", "total_amount"))
         .filter(
           $"trip_distance" > 0 &&
@@ -58,7 +57,6 @@ object IngestionJob {
           $"fare_amount" > 0
         )
 
-      // Derived columns
       val enhancedDF = filteredDF
         .withColumn("trip_duration_minutes",
           (unix_timestamp($"dropoff_datetime") - unix_timestamp($"pickup_datetime")) / 60.0)
@@ -76,8 +74,6 @@ object IngestionJob {
         logger.warn("No valid records after filtering - exiting")
         return
       }
-
-      val targetTable = "default.nyc_taxi_trips_raw"
 
       logger.info(s"Writing to Iceberg table: $targetTable (partitioned by pickup_date)")
 

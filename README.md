@@ -1,91 +1,51 @@
-from pyspark.sql import functions as F
-import findspark
-findspark.init("/opt/spark")
 
-from pyspark.sql import SparkSession
-
-# ───────────────────────────────────────────────
-#          Spark + Iceberg Session Setup
-# ───────────────────────────────────────────────
-spark = SparkSession.builder \
-    .appName("Iceberg Tables Quick Verification") \
-    .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
-    .config("spark.sql.catalog.ice_hadoop", "org.apache.iceberg.spark.SparkCatalog") \
-    .config("spark.sql.catalog.ice_hadoop.type", "hadoop") \
-    .config("spark.sql.catalog.ice_hadoop.warehouse", "file:/home/aashishvinu/tasks/spark_iceberg/spark-warehouse") \
-    .config("spark.sql.defaultCatalog", "ice_hadoop") \
-    .getOrCreate()
+sbt clean update compile assembly
+spark-submit --class IngestionJob --driver-memory 20g --executor-memory 20g target/scala-2.13/nyc-taxi-iceberg-assembly-1.0.jar
+spark-submit --class DimensionJob --driver-memory 20g --executor-memory 20g target/scala-2.13/nyc-taxi-iceberg-assembly-1.0.jar
+spark-submit --class FactJob --driver-memory 20g --executor-memory 20g target/scala-2.13/nyc-taxi-iceberg-assembly-1.0.jar
+spark-submit --class AggregationJob --driver-memory 20g --executor-memory 20g target/scala-2.13/nyc-taxi-iceberg-assembly-1.0.jar
+spark-submit --class DataQualityJob --driver-memory 20g --executor-memory 20g target/scala-2.13/nyc-taxi-iceberg-assembly-1.0.jar
 
 
-print("Spark session ready ✓")
-print(f"Spark version: {spark.version}\n")
-
-# ───────────────────────────────────────────────
-#          Helper to display Iceberg table nicely
-# ───────────────────────────────────────────────
-def show_table_info(table_name, sample_rows=5, truncate=False):
-    print(f"\n{'═' * 70}")
-    print(f"TABLE: {table_name}")
-    print(f"{'═' * 70}")
-    
-    try:
-        if not spark.catalog.tableExists(table_name):
-            print("→ Table does NOT exist in the catalog.")
-            return
-        
-        df = spark.table(table_name)
-        
-        # Basic info
-        print("Schema:")
-        df.printSchema()
-        
-        count = df.count()
-        print(f"\nTotal rows: {count:,}")
-        
-        if count == 0:
-            print("→ Table is empty.")
-            return
-        
-        # Sample data
-        print(f"\nSample ({sample_rows} rows):")
-        df.show(sample_rows, truncate=truncate)
-        
-        # Partition information (if any)
-        print("\nPartition info:")
-        spark.sql(f"""
-            DESCRIBE TABLE EXTENDED {table_name}
-        """).filter(
-            "col_name IN ('Partition Columns', 'Partition Spec')"
-        ).show(truncate=False)
-        
-    except Exception as e:
-        print(f"Error reading {table_name}: {str(e)}")
-
-# ───────────────────────────────────────────────
-#          Check all assignment tables
-# ───────────────────────────────────────────────
-tables = [
-    "nyc_taxi_trips_raw",
-    "nyc_taxi_daily_summary",
-    "nyc_taxi_hourly_patterns",
-    "nyc_taxi_top_locations"
-]
-
-for table in tables:
-    show_table_info(table)
-
-# Optional: quick list of all tables in the catalog
-print(f"\n{'─' * 70}")
-print("All tables in catalog:")
-spark.sql("SHOW TABLES").show(truncate=False)
-
-print("\nDone.")
-
+spark-shell --master "local[*]" \
+--conf "spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" \
+--conf "spark.sql.catalog.iceberg_catalog=org.apache.iceberg.spark.SparkCatalog" \
+--conf "spark.sql.catalog.iceberg_catalog.type=hadoop" \
+--conf "spark.sql.catalog.iceberg_catalog.warehouse=/home/aashishvinu/tasks/multitable_iceberg/spark-warehouse" \
+--conf "spark.sql.defaultCatalog=iceberg_catalog" \
+--packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.13:1.9.0,ch.qos.logback:logback-classic:1.5.12
 
 # ───────────────────────────────────────────────
 #          Execution Command (Vrithi aakit add to readme)
 # ───────────────────────────────────────────────
 
-sbt clean update compile assembly
-spark-submit --class IngestionJob --driver-memory 20g --executor-memory 20g target/scala-2.13/nyc-taxi-iceberg-assembly-1.0.jar 
-spark-submit --class AggregationJob --driver-memory 20g --executor-memory 20g target/scala-2.13/nyc-taxi-iceberg-assembly-1.0.jar
+
+spark.sql("DESCRIBE iceberg_catalog.default.nyc_taxi_trips_raw").show(50, false)
+
+spark.sql("""
+SELECT
+count(*) AS total_trips,
+count(DISTINCT pickup_date) AS distinct_dates,
+min(pickup_date) AS first_date,
+max(pickup_date) AS last_date,
+round(avg(trip_distance), 2) AS avg_distance_miles,
+round(avg(trip_duration_minutes), 1) AS avg_duration_minutes,
+round(avg(average_speed_mph), 1) AS avg_speed_mph,
+round(avg(total_amount), 2) AS avg_total_amount_usd
+FROM iceberg_catalog.default.nyc_taxi_trips_raw
+""").show(false)
+
+spark.sql("""
+SELECT
+'current' AS version,
+count(*) AS cnt
+FROM iceberg_catalog.default.nyc_taxi_trips_raw
+
+UNION ALL
+
+SELECT
+'previous' AS version,
+count(*) AS cnt
+FROM iceberg_catalog.default.nyc_taxi_trips_raw
+VERSION AS OF 8903115058753808214
+""").show()
