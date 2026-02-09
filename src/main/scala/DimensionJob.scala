@@ -22,6 +22,8 @@ object DimensionJob {
       .config("spark.sql.catalog.iceberg_catalog.type", "hadoop")
       .config("spark.sql.catalog.iceberg_catalog.warehouse", "/home/aashishvinu/tasks/multitable_iceberg/spark-warehouse")
       .config("spark.sql.defaultCatalog", "iceberg_catalog")
+      .config("spark.eventLog.enabled", "true")
+      .config("spark.eventLog.dir", "file:///tmp/spark-events")
       .getOrCreate()
 
     import spark.implicits._
@@ -33,8 +35,6 @@ object DimensionJob {
     try {
       logger.info("Starting dimension tables creation...")
 //      spark.sql("CREATE SCHEMA IF NOT EXISTS iceberg_catalog.default")
-
-      logger.info("Building synthetic nyc_taxi_location_dim from raw taxi data")
 
       val uniqueLocations = raw
         .select($"pickup_location_id".as("location_id"))
@@ -72,7 +72,6 @@ object DimensionJob {
 
       logger.info(s"Date range found: $minDate to $maxDate ($days days)")
 
-      // Fixed: cast to int instead of long
       val dateRange = spark.range(days)
         .select(
           date_add(lit(minDate.toString).cast("date"), $"id".cast("int")).as("full_date")

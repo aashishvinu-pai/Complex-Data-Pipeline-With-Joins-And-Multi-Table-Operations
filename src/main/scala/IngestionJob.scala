@@ -17,6 +17,8 @@ object IngestionJob {
       .config("spark.sql.catalog.iceberg_catalog.type", "hadoop")
       .config("spark.sql.catalog.iceberg_catalog.warehouse", "/home/aashishvinu/tasks/multitable_iceberg/spark-warehouse")
       .config("spark.sql.defaultCatalog", "iceberg_catalog")
+      .config("spark.eventLog.enabled", "true")
+      .config("spark.eventLog.dir", "file:///tmp/spark-events")
       .getOrCreate()
 
     import spark.implicits._
